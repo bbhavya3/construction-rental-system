@@ -7,6 +7,20 @@ function App() {
 
   const [equipment, setEquipment] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [dispatches, setDispatches] = useState([]);
+  const [dispatchForm, setDispatchForm] = useState({
+    bookingId: "",
+    driverName: "",
+    vehicleNumber: "",
+    deliveryAddress: "",
+    destination: "",
+    scheduledDate: "",
+    dispatchDate: "",
+    status: "PENDING",
+    assignedTo: "Admin"
+  });
+  const [savingDispatch, setSavingDispatch] = useState(false);
+  const [loadingDispatches, setLoadingDispatches] = useState(false);
 
   const [loading, setLoading] = useState(false);
 
@@ -14,6 +28,18 @@ function App() {
   const [showRegister, setShowRegister] = useState(false);
 
   const [selectedEquipment, setSelectedEquipment] = useState(null);
+
+  const [equipmentForm, setEquipmentForm] = useState({
+    name: "",
+    category: "",
+    description: "",
+    pricePerDay: "",
+    location: "",
+    status: "AVAILABLE"
+  });
+  const [editingEquipmentId, setEditingEquipmentId] = useState(null);
+  const [savingEquipment, setSavingEquipment] = useState(false);
+
 
   const [loginData, setLoginData] = useState({
     email: "",
@@ -28,6 +54,19 @@ function App() {
   });
 
 
+  // Add the JWT token to every protected backend request.
+  const authFetch = (url, options = {}) => {
+    const token = localStorage.getItem("token");
+
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+  };
+
   // =====================================================
   // LOAD EQUIPMENT
   // =====================================================
@@ -36,7 +75,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         "http://localhost:8080/api/equipment"
       );
 
@@ -64,7 +103,7 @@ function App() {
 
   const loadBookings = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         "http://localhost:8080/api/bookings"
       );
 
@@ -78,6 +117,123 @@ function App() {
 
     } catch (error) {
       console.error("Bookings error:", error);
+    }
+  };
+
+
+  // =====================================================
+  // LOAD DISPATCHES
+  // =====================================================
+
+  const loadDispatches = async () => {
+    setLoadingDispatches(true);
+    try {
+      const response = await authFetch("http://localhost:8080/api/dispatches");
+      if (!response.ok) {
+        throw new Error("Unable to load dispatches");
+      }
+      const data = await response.json();
+      setDispatches(data);
+    } catch (error) {
+      console.error("Dispatches error:", error);
+      alert("Unable to load dispatches. Check whether the backend is running.");
+    } finally {
+      setLoadingDispatches(false);
+    }
+  };
+
+  const handleCreateDispatch = async (e) => {
+    e.preventDefault();
+    setSavingDispatch(true);
+    try {
+      const selectedBooking = bookings.find(
+        (booking) => String(booking.id) === String(dispatchForm.bookingId)
+      );
+      if (!selectedBooking) {
+        alert("Please select a valid booking.");
+        return;
+      }
+
+      const payload = {
+        booking: { id: Number(dispatchForm.bookingId) },
+        driverName: dispatchForm.driverName.trim(),
+        vehicleNumber: dispatchForm.vehicleNumber.trim(),
+        deliveryAddress: dispatchForm.deliveryAddress.trim(),
+        destination: (dispatchForm.destination || dispatchForm.deliveryAddress).trim(),
+        scheduledDate: dispatchForm.scheduledDate,
+        dispatchDate: dispatchForm.dispatchDate || dispatchForm.scheduledDate,
+        status: dispatchForm.status,
+        assignedTo: dispatchForm.assignedTo.trim() || "Admin"
+      };
+
+      const response = await authFetch("http://localhost:8080/api/dispatches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to create dispatch");
+      }
+
+      alert("Dispatch created successfully.");
+      setDispatchForm({
+        bookingId: "",
+        driverName: "",
+        vehicleNumber: "",
+        deliveryAddress: "",
+        destination: "",
+        scheduledDate: "",
+        dispatchDate: "",
+        status: "PENDING",
+        assignedTo: "Admin"
+      });
+      await loadDispatches();
+    } catch (error) {
+      console.error("Create dispatch error:", error);
+      alert(error.message || "Unable to create dispatch.");
+    } finally {
+      setSavingDispatch(false);
+    }
+  };
+
+  const handleUpdateDispatchStatus = async (dispatch, status) => {
+    try {
+      const response = await authFetch(
+        `http://localhost:8080/api/dispatches/${dispatch.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status })
+        }
+      );
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to update dispatch status");
+      }
+      await loadDispatches();
+    } catch (error) {
+      console.error("Update dispatch error:", error);
+      alert(error.message || "Unable to update dispatch status.");
+    }
+  };
+
+  const handleDeleteDispatch = async (id) => {
+    if (!window.confirm(`Delete dispatch #${id}?`)) return;
+    try {
+      const response = await authFetch(`http://localhost:8080/api/dispatches/${id}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to delete dispatch");
+      }
+      alert("Dispatch deleted successfully.");
+      await loadDispatches();
+    } catch (error) {
+      console.error("Delete dispatch error:", error);
+      alert(error.message || "Unable to delete dispatch.");
     }
   };
 
@@ -108,6 +264,12 @@ function App() {
         return;
       }
 
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+      } else {
+        throw new Error("Login succeeded but the server did not return a JWT token.");
+      }
+
       setLoggedInUser(data);
 
       setShowLogin(false);
@@ -121,6 +283,7 @@ function App() {
       // Load dashboard data
       loadEquipment();
       loadBookings();
+      if (data.role?.toUpperCase() === "ADMIN") loadDispatches();
 
     } catch (error) {
       console.error("Login error:", error);
@@ -179,10 +342,12 @@ function App() {
   // =====================================================
 
   const handleLogout = () => {
+    localStorage.removeItem("token");
     setLoggedInUser(null);
 
     setEquipment([]);
     setBookings([]);
+    setDispatches([]);
 
     setSelectedEquipment(null);
 
@@ -570,6 +735,281 @@ function App() {
     );
   }
 
+
+
+  const resetEquipmentForm = () => {
+    setEquipmentForm({
+      name: "",
+      category: "",
+      description: "",
+      pricePerDay: "",
+      location: "",
+      status: "AVAILABLE"
+    });
+    setEditingEquipmentId(null);
+  };
+
+  const handleSaveEquipment = async (e) => {
+    e.preventDefault();
+    setSavingEquipment(true);
+    try {
+      const isEditing = editingEquipmentId !== null;
+      const response = await authFetch(
+        isEditing
+          ? `http://localhost:8080/api/equipment/${editingEquipmentId}`
+          : "http://localhost:8080/api/equipment",
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...equipmentForm,
+            pricePerDay: Number(equipmentForm.pricePerDay)
+          })
+        }
+      );
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Unable to save equipment");
+      }
+      alert(isEditing ? "Equipment updated successfully." : "Equipment added successfully.");
+      resetEquipmentForm();
+      await loadEquipment();
+    } catch (error) {
+      console.error("Save equipment error:", error);
+      alert(error.message || "Unable to save equipment. Check the backend.");
+    } finally {
+      setSavingEquipment(false);
+    }
+  };
+
+  const startEditEquipment = (item) => {
+    setEditingEquipmentId(item.id);
+    setEquipmentForm({
+      name: item.name || "",
+      category: item.category || "",
+      description: item.description || "",
+      pricePerDay: item.pricePerDay ?? "",
+      location: item.location || "",
+      status: item.status || "AVAILABLE"
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  if (loggedInUser.role?.toUpperCase() === "ADMIN") {
+    const adminActiveRentals = bookings.filter(
+      (booking) => booking.status === "ACTIVE"
+    ).length;
+
+    const fieldStyle = {
+      width: "100%",
+      padding: "11px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "8px",
+      background: "#fff",
+      color: "#111827",
+      boxSizing: "border-box",
+      marginTop: "6px"
+    };
+    const cardStyle = {
+      background: "#fff",
+      border: "1px solid #e5e7eb",
+      borderRadius: "12px",
+      padding: "20px",
+      boxShadow: "0 4px 14px rgba(15,23,42,0.04)"
+    };
+
+    return (
+      <div className="dashboard" style={{ minHeight: "100vh", background: "#f4f6f9" }}>
+        <nav className="main-navbar">
+          <div className="main-logo">
+            <span className="logo-icon">CR</span>
+            Construct<span>Rent</span>
+          </div>
+          <div className="nav-links">
+            <a href="#admin-dashboard">Dashboard</a>
+            <a href="#admin-equipment">Equipment</a>
+            <a href="#admin-bookings">All Bookings</a>
+            <a href="#admin-dispatches">Dispatches</a>
+          </div>
+          <div className="nav-user">
+            <div className="user-info">
+              <span>Welcome, {loggedInUser.name}</span>
+              <small>ADMIN</small>
+            </div>
+            <button className="logout-btn" onClick={handleLogout}>Logout</button>
+          </div>
+        </nav>
+
+        <main id="admin-dashboard" style={{ maxWidth: "1200px", margin: "0 auto", padding: "36px 24px" }}>
+          <div style={{ marginBottom: "26px" }}>
+            <p style={{ color: "#f59e0b", fontWeight: 800, letterSpacing: "3px", marginBottom: "8px" }}>CONSTRUCTRENT MANAGEMENT</p>
+            <h1 style={{ color: "#111827", margin: 0 }}>Admin Dashboard</h1>
+            <p style={{ color: "#64748b", marginTop: "8px" }}>Manage equipment inventory and monitor customer bookings.</p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "16px", marginBottom: "30px" }}>
+            <div style={cardStyle}><p style={{ color: "#64748b", margin: "0 0 8px" }}>Total Equipment</p><strong style={{ fontSize: "30px", color: "#111827" }}>{equipment.length}</strong></div>
+            <div style={cardStyle}><p style={{ color: "#64748b", margin: "0 0 8px" }}>Total Bookings</p><strong style={{ fontSize: "30px", color: "#111827" }}>{bookings.length}</strong></div>
+            <div style={cardStyle}><p style={{ color: "#64748b", margin: "0 0 8px" }}>Active Rentals</p><strong style={{ fontSize: "30px", color: "#059669" }}>{adminActiveRentals}</strong></div>
+            <div style={cardStyle}><p style={{ color: "#64748b", margin: "0 0 8px" }}>Pending Bookings</p><strong style={{ fontSize: "30px", color: "#d97706" }}>{bookings.filter((b) => b.status === "PENDING").length}</strong></div>
+            <div style={cardStyle}><p style={{ color: "#64748b", margin: "0 0 8px" }}>Total Dispatches</p><strong style={{ fontSize: "30px", color: "#2563eb" }}>{dispatches.length}</strong></div>
+          </div>
+
+          <section style={{ ...cardStyle, marginBottom: "28px" }}>
+            <h2 style={{ marginTop: 0, color: "#111827" }}>{editingEquipmentId ? "Edit Equipment" : "Add New Equipment"}</h2>
+            <form onSubmit={handleSaveEquipment} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Equipment Name
+                <input style={fieldStyle} value={equipmentForm.name} onChange={(e) => setEquipmentForm({ ...equipmentForm, name: e.target.value })} required placeholder="e.g. JCB Excavator" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Category
+                <input style={fieldStyle} value={equipmentForm.category} onChange={(e) => setEquipmentForm({ ...equipmentForm, category: e.target.value })} required placeholder="e.g. Excavator" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Price per day (₹)
+                <input style={fieldStyle} type="number" min="0" step="0.01" value={equipmentForm.pricePerDay} onChange={(e) => setEquipmentForm({ ...equipmentForm, pricePerDay: e.target.value })} required placeholder="3000" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Location
+                <input style={fieldStyle} value={equipmentForm.location} onChange={(e) => setEquipmentForm({ ...equipmentForm, location: e.target.value })} required placeholder="e.g. Vijayawada" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Status
+                <select style={fieldStyle} value={equipmentForm.status} onChange={(e) => setEquipmentForm({ ...equipmentForm, status: e.target.value })}>
+                  <option value="AVAILABLE">AVAILABLE</option>
+                  <option value="RENTED">RENTED</option>
+                  <option value="MAINTENANCE">MAINTENANCE</option>
+                </select>
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600, gridColumn: "1 / -1" }}>Description
+                <textarea style={{ ...fieldStyle, minHeight: "82px", resize: "vertical" }} value={equipmentForm.description} onChange={(e) => setEquipmentForm({ ...equipmentForm, description: e.target.value })} placeholder="Equipment details" />
+              </label>
+              <div style={{ display: "flex", gap: "10px", gridColumn: "1 / -1", flexWrap: "wrap" }}>
+                <button type="submit" disabled={savingEquipment} className="hero-btn">{savingEquipment ? "Saving..." : editingEquipmentId ? "Update Equipment" : "Add Equipment"}</button>
+                {editingEquipmentId && <button type="button" onClick={resetEquipmentForm} style={{ padding: "12px 18px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#111827" }}>Cancel Edit</button>}
+                <button type="button" onClick={() => { loadEquipment(); loadBookings(); }} style={{ padding: "12px 18px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#111827" }}>Refresh Data</button>
+              </div>
+            </form>
+          </section>
+
+          <section id="admin-equipment" style={{ ...cardStyle, marginBottom: "28px", overflowX: "auto" }}>
+            <h2 style={{ marginTop: 0, color: "#111827" }}>Equipment Inventory</h2>
+            {equipment.length === 0 ? <p style={{ color: "#64748b" }}>No equipment loaded. Use Refresh Data or check the backend.</p> : (
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px", color: "#111827" }}>
+                <thead><tr style={{ textAlign: "left", background: "#f8fafc" }}>{["ID", "Name", "Category", "Price / day", "Location", "Status", "Action"].map((heading) => <th key={heading} style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{heading}</th>)}</tr></thead>
+                <tbody>{equipment.map((item) => <tr key={item.id}>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{item.id}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{item.name}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{item.category}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>₹{item.pricePerDay}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{item.location}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{item.status}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}><button type="button" onClick={() => startEditEquipment(item)} style={{ padding: "8px 12px", border: 0, borderRadius: "6px", background: "#e0e7ff", color: "#3730a3" }}>Edit</button></td>
+                </tr>)}</tbody>
+              </table>
+            )}
+          </section>
+
+          <section id="admin-bookings" style={{ ...cardStyle, overflowX: "auto" }}>
+            <h2 style={{ marginTop: 0, color: "#111827" }}>All Customer Bookings</h2>
+            {bookings.length === 0 ? <p style={{ color: "#64748b" }}>No bookings found.</p> : (
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "650px", color: "#111827" }}>
+                <thead><tr style={{ textAlign: "left", background: "#f8fafc" }}>{["Booking ID", "Equipment", "Start Date", "End Date", "Amount", "Status"].map((heading) => <th key={heading} style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{heading}</th>)}</tr></thead>
+                <tbody>{bookings.map((booking) => <tr key={booking.id}>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>#{booking.id}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{booking.equipment?.name || "Equipment"}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{booking.startDate || "—"}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{booking.endDate || "—"}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>₹{booking.estimatedAmount ?? "—"}</td>
+                  <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{booking.status || "—"}</td>
+                </tr>)}</tbody>
+              </table>
+            )}
+          </section>
+
+          <section id="admin-dispatches" style={{ ...cardStyle, marginTop: "28px", marginBottom: "28px" }}>
+            <h2 style={{ marginTop: 0, color: "#111827" }}>Dispatch Management</h2>
+            <p style={{ color: "#64748b" }}>Create a dispatch for an existing booking and track its delivery status.</p>
+            <form onSubmit={handleCreateDispatch} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Booking
+                <select style={fieldStyle} value={dispatchForm.bookingId} onChange={(e) => setDispatchForm({ ...dispatchForm, bookingId: e.target.value })} required>
+                  <option value="">Select booking</option>
+                  {bookings.map((booking) => (
+                    <option key={booking.id} value={booking.id}>
+                      Booking #{booking.id} — {booking.equipment?.name || "Equipment"} ({booking.status})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Driver Name
+                <input style={fieldStyle} value={dispatchForm.driverName} onChange={(e) => setDispatchForm({ ...dispatchForm, driverName: e.target.value })} required placeholder="e.g. Ravi Kumar" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Vehicle Number
+                <input style={fieldStyle} value={dispatchForm.vehicleNumber} onChange={(e) => setDispatchForm({ ...dispatchForm, vehicleNumber: e.target.value })} required placeholder="e.g. AP16AB5678" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Delivery Address
+                <input style={fieldStyle} value={dispatchForm.deliveryAddress} onChange={(e) => setDispatchForm({ ...dispatchForm, deliveryAddress: e.target.value })} required placeholder="Delivery location" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Destination (optional)
+                <input style={fieldStyle} value={dispatchForm.destination} onChange={(e) => setDispatchForm({ ...dispatchForm, destination: e.target.value })} placeholder="Defaults to delivery address" />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Scheduled Date
+                <input style={fieldStyle} type="date" value={dispatchForm.scheduledDate} onChange={(e) => setDispatchForm({ ...dispatchForm, scheduledDate: e.target.value })} required />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Dispatch Date
+                <input style={fieldStyle} type="date" value={dispatchForm.dispatchDate} onChange={(e) => setDispatchForm({ ...dispatchForm, dispatchDate: e.target.value })} />
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Initial Status
+                <select style={fieldStyle} value={dispatchForm.status} onChange={(e) => setDispatchForm({ ...dispatchForm, status: e.target.value })}>
+                  <option value="PENDING">PENDING</option>
+                  <option value="IN_TRANSIT">IN_TRANSIT</option>
+                  <option value="DELIVERED">DELIVERED</option>
+                </select>
+              </label>
+              <label style={{ color: "#374151", fontWeight: 600 }}>Assigned To
+                <input style={fieldStyle} value={dispatchForm.assignedTo} onChange={(e) => setDispatchForm({ ...dispatchForm, assignedTo: e.target.value })} placeholder="Admin / dispatch manager" />
+              </label>
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button type="submit" disabled={savingDispatch} className="hero-btn">{savingDispatch ? "Creating..." : "Create Dispatch"}</button>
+                <button type="button" onClick={loadDispatches} disabled={loadingDispatches} style={{ padding: "12px 18px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#111827" }}>{loadingDispatches ? "Refreshing..." : "Refresh Dispatches"}</button>
+              </div>
+            </form>
+            {bookings.length === 0 && <p style={{ color: "#b45309", marginTop: "12px" }}>No bookings loaded. Refresh data or check the bookings API before creating a dispatch.</p>}
+          </section>
+
+          <section style={{ ...cardStyle, marginBottom: "28px", overflowX: "auto" }}>
+            <h2 style={{ marginTop: 0, color: "#111827" }}>All Dispatches</h2>
+            {loadingDispatches ? <p style={{ color: "#64748b" }}>Loading dispatches...</p> : dispatches.length === 0 ? (
+              <p style={{ color: "#64748b" }}>No dispatches found. Create one above or refresh the list.</p>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1050px", color: "#111827" }}>
+                <thead><tr style={{ textAlign: "left", background: "#f8fafc" }}>
+                  {["Dispatch ID", "Booking", "Equipment", "Driver", "Vehicle", "Destination", "Scheduled", "Status", "Actions"].map((heading) => <th key={heading} style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{heading}</th>)}
+                </tr></thead>
+                <tbody>{dispatches.map((dispatch) => (
+                  <tr key={dispatch.id}>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>#{dispatch.id}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>#{dispatch.booking?.id || "—"}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{dispatch.equipment?.name || dispatch.booking?.equipment?.name || "—"}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{dispatch.driverName}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{dispatch.vehicleNumber}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{dispatch.destination || dispatch.deliveryAddress}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>{dispatch.scheduledDate || "—"}</td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>
+                      <select aria-label={`Status for dispatch ${dispatch.id}`} style={{ ...fieldStyle, minWidth: "145px", marginTop: 0 }} value={dispatch.status || "PENDING"} onChange={(e) => handleUpdateDispatchStatus(dispatch, e.target.value)}>
+                        <option value="PENDING">PENDING</option>
+                        <option value="IN_TRANSIT">IN_TRANSIT</option>
+                        <option value="DELIVERED">DELIVERED</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: "12px", borderBottom: "1px solid #e5e7eb" }}>
+                      <button type="button" onClick={() => handleDeleteDispatch(dispatch.id)} style={{ padding: "8px 12px", border: 0, borderRadius: "6px", background: "#fee2e2", color: "#991b1b" }}>Delete</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   // =====================================================
   // ACTIVE RENTALS

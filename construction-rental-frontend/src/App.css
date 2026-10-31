@@ -1088,3 +1088,50 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================
+   AUTH FORM FIELD VISIBILITY FIX
+========================= */
+.auth-box input,
+.auth-box select {
+  color: #111827;
+  background-color: #ffffff;
+  opacity: 1;
+}
+
+.auth-box select {
+  display: block;
+  min-height: 46px;
+  cursor: pointer;
+  appearance: auto;
+  -webkit-appearance: menulist;
+}
+
+.auth-box select option {
+  color: #111827;
+  background-color: #ffffff;
+}
+/* FIX: Make form text clearly visible */
+.auth-box input,
+.auth-box select {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px !important;
+  line-height: normal !important;
+  height: 44px;
+  padding: 10px 14px !important;
+  box-sizing: border-box;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+
+.auth-box input::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+.auth-box select option {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
